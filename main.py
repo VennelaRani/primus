@@ -1,4 +1,3 @@
-
 # this will only bring 10 mins of all what we got , dosent waste much apis
 import tweepy
 from pymongo import MongoClient
@@ -943,55 +942,53 @@ class LLMHandler:
     
     async def _generate_text(self, prompt: str) -> str:
         """Generate text using the model with improved error handling."""
-        try:
+        # try:
             # Tokenize input
-            inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048)
-            inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
+        inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048)
+        inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
 
-            # Generate response
-            outputs = self.model.generate(
-                **inputs,
-                max_new_tokens=150,  # Limit generation length
-                num_return_sequences=1,
-                temperature=0.7,
-                do_sample=True,
-                pad_token_id=self.tokenizer.eos_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
-                bos_token_id=self.tokenizer.bos_token_id
-            )
+        # Generate response
+        outputs = self.model.generate(
+            **inputs,
+            max_new_tokens=150,  # Limit generation length
+            num_return_sequences=1,
+            temperature=0.7,
+            do_sample=True,
+            pad_token_id=self.tokenizer.eos_token_id,
+            eos_token_id=self.tokenizer.eos_token_id,
+            bos_token_id=self.tokenizer.bos_token_id
+        )
 
-            # Check if model generated output
-            if outputs is None or len(outputs) == 0:
-                print("🚨 Model did not generate any output.1")
-                return "Sorry, I couldn't generate a response."
+        # Check if model generated output
+        if outputs is None or len(outputs) == 0:
+            print("🚨 Model did not generate any output.1")
+           
+        # Decode the output
+        response1 = self.tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
+        
+        # Ensure response is meaningful
+        if not response1:
+            print("🚨 Model generated an empty response.2")
+           
+        # Extract meaningful response, if format includes "Response:"
+        response_start = response1.lower().find("response:")
+        if response_start != -1:
+            response2 = response1[response_start + len("response:"):].strip()
+        else:
+            response2 = response1
+        print("response2 : ",response2)
+        # Final check for an empty response
+        if not response2 or response2.lower() in ["", "response:"]:
+            print("🚨 Model generated an empty response after processing.3")
+           
 
-            # Decode the output
-            response1 = self.tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
-            
-            # Ensure response is meaningful
-            if not response1:
-                print("🚨 Model generated an empty response.2")
-                return "Sorry, I couldn't generate a response."
+        # Log and return final response
+        print("📝 Response from local model ----------------:", response2)
+        return response2
 
-            # Extract meaningful response, if format includes "Response:"
-            response_start = response1.lower().find("response:")
-            if response_start != -1:
-                response2 = response1[response_start + len("response:"):].strip()
-            else:
-                response2 = response1
-
-            # Final check for an empty response
-            if not response2 or response2.lower() in ["", "response:"]:
-                print("🚨 Model generated an empty response after processing.3")
-                return "Sorry, I couldn't generate a response."
-
-            # Log and return final response
-            print("📝 Response from local model ----------------:", response2)
-            return response2
-
-        except Exception as e:
-            print(f"🚨 Error in _generate_text: {e}")
-            return "Sorry, an error occurred while generating the response."
+        # except Exception as e:
+        #     print(f"🚨 Error in _generate_text: {e}")
+        #     return "Sorry, an error occurred while generating the response."
 
 
 
@@ -1067,54 +1064,54 @@ class LLMHandler:
     async def generate_crypto_response(self, parent_tweet: str, reply: str, related_tweets: List[str], conversation_context: List[str] = None,data: dict = {}) -> str:
         """Generate a response for crypto-related content."""
         print("in generate_crypto_response")
-        try:
-            context_str = "\n".join(conversation_context) if conversation_context else ""
-            emotion_prompt = self.prompt_settings["humor"].get(self.emotion_value, "Include some humor.")
-            nsfw_prompt = self.prompt_settings["nsfw"].get(self.nsfw_value, "Do not include any NSFW content.")
-            current_date = datetime.today().strftime("%Y-%m-%d")
+        # try:
+        context_str = "\n".join(conversation_context) if conversation_context else ""
+        emotion_prompt = self.prompt_settings["humor"].get(self.emotion_value, "Include some humor.")
+        nsfw_prompt = self.prompt_settings["nsfw"].get(self.nsfw_value, "Do not include any NSFW content.")
+        current_date = datetime.today().strftime("%Y-%m-%d")
 
-            prompt = f"""
-            Generate a crypto-focused response with these requirements:
-            - Maximum 270 characters
-            - No price predictions
-            - No 'based on' or 'according to' phrases
-            - No quotation marks or hashtags
-            - Complete sentences only
-            - Strictly do not repeat or rephrase the user’s question
-            - Ensure the response adds value and remains relevant
-            - Make sure to provide correct response using 'Data' provided without null and do not repeat any kind of Parent tweet or Previous context or User reply or any kind or  Related tweets. 
-            Context:
-            Parent tweet: {parent_tweet}
-            Previous context: {context_str}
-            User reply: {reply}
-            Data :{data}
-            Date: {current_date}
-            Related tweets: {', '.join(related_tweets)}
+        prompt = f"""
+        Generate a crypto-focused response with these requirements:
+        - Maximum 270 characters
+        - No price predictions
+        - No 'based on' or 'according to' phrases
+        - No quotation marks or hashtags
+        - Complete sentences only
+        - Strictly do not repeat or rephrase the user’s question
+        - Ensure the response adds value and remains relevant
+        - Make sure to provide correct response using 'Data' provided without null and do not repeat any kind of Parent tweet or Previous context or User reply or any kind or  Related tweets. 
+        Context:
+        Parent tweet: {parent_tweet}
+        Previous context: {context_str}
+        User reply: {reply}
+        Data :{data}
+        Date: {current_date}
+        Related tweets: {', '.join(related_tweets)}
 
-            Response:
-            """
-            with open("generate_crypto_response.txt", "w", encoding="utf-8") as file:
-                file.write(prompt)
-            gpt_response, llama_response, fine_tuned_response = await asyncio.gather(
-                self._generate_openai_text(prompt),
-                self._generate_ollama_text(prompt),
-                self._generate_text(prompt)
+        Response:
+        """
+        with open("generate_crypto_response.txt", "w", encoding="utf-8") as file:
+            file.write(prompt)
+        gpt_response, llama_response, fine_tuned_response = await asyncio.gather(
+            self._generate_openai_text(prompt),
+            self._generate_ollama_text(prompt),
+            self._generate_text(prompt)
+        )
+
+        
+
+
+        return (
+                self._validate_response_length(gpt_response),
+                self._validate_response_length(llama_response),
+                self._validate_response_length(fine_tuned_response)
             )
 
-          
-
-
-            return (
-                    self._validate_response_length(gpt_response),
-                    self._validate_response_length(llama_response),
-                    self._validate_response_length(fine_tuned_response)
-                )
-
-            
         
-        except Exception as e:
-            print(f"Error in generate_crypto_response: {e}")
-            return "Sorry, I couldn't generate a response at this time."
+        
+        # except Exception as e:
+        #     print(f"Error in generate_crypto_response: {e}")
+        #     return "Sorry, I couldn't generate a response at this time."
 
 
     
@@ -1198,90 +1195,90 @@ async def main():
 
                 replies.sort(key=lambda x: (x['depth'], x['created_at']))
                 for reply in replies:
-                    try:
-                        #adding this to skip already processed ones from here 
-                                # Check if reply ID is already stored
-                        if db.is_known_reply(reply['reply_id']):
-                            print(f"Skipping known reply: {reply['reply_text']}")
-                            continue  # Skip processing this reply if already stored
-                        
-                        # Proceed with processing if not already stored
-                        db.store_reply_id(reply['reply_id'])  # Store reply ID to track it
-                        print(f"Processing reply: {reply['reply_text']}")
-                        #adding this to skip already processed ones to here
+                    # try:
+                    #     #adding this to skip already processed ones from here 
+                    #             # Check if reply ID is already stored
+                    if db.is_known_reply(reply['reply_id']):
+                        print(f"Skipping known reply: {reply['reply_text']}")
+                        continue  # Skip processing this reply if already stored
+                    
+                    # Proceed with processing if not already stored
+                    db.store_reply_id(reply['reply_id'])  # Store reply ID to track it
+                    print(f"Processing reply: {reply['reply_text']}")
+                    #adding this to skip already processed ones to here
 
 
-                                # Get the context of the conversation up to this point
-                        conversation_context = []
-                        if reply['immediate_parent_id']:
-                            # Find previous replies in this chain
-                            current_parent_id = reply['immediate_parent_id']
-                            while current_parent_id:
-                                parent_reply = next(
-                                    (r for r in replies if r['reply_id'] == current_parent_id), 
-                                    None
-                                )
-                                if parent_reply:
-                                    conversation_context.insert(0, parent_reply['reply_text'])
-                                    current_parent_id = parent_reply['immediate_parent_id']
-                                else:
-                                    break
-                        
-                        if db.is_conversation_limit_reached(reply['parent_tweet_id'], reply['username']):
-                            print(f"Conversation limit reached for user {reply['username']} in thread {reply['parent_tweet_id']}. Skipping...")
-                            skipped_count += 1
-                            continue
+                            # Get the context of the conversation up to this point
+                    conversation_context = []
+                    if reply['immediate_parent_id']:
+                        # Find previous replies in this chain
+                        current_parent_id = reply['immediate_parent_id']
+                        while current_parent_id:
+                            parent_reply = next(
+                                (r for r in replies if r['reply_id'] == current_parent_id), 
+                                None
+                            )
+                            if parent_reply:
+                                conversation_context.insert(0, parent_reply['reply_text'])
+                                current_parent_id = parent_reply['immediate_parent_id']
+                            else:
+                                break
+                    
+                    if db.is_conversation_limit_reached(reply['parent_tweet_id'], reply['username']):
+                        print(f"Conversation limit reached for user {reply['username']} in thread {reply['parent_tweet_id']}. Skipping...")
+                        skipped_count += 1
+                        continue
 
-                        # Classify the reply and determine if it's crypto-related
-                        is_crypto, keyword,data = await llm_handler.classify_content(
+                    # Classify the reply and determine if it's crypto-related
+                    is_crypto, keyword,data = await llm_handler.classify_content(
+                        reply['parent_tweet_text'], reply['reply_text'], conversation_context
+                    )
+
+                    # Generate an appropriate response
+                    if is_crypto:
+                        related_tweets = twitter_api.fetch_related_tweets(keyword)
+                        gpt_response,llama_response,finetune_response = await llm_handler.generate_crypto_response(
+                            reply['parent_tweet_text'], reply['reply_text'], related_tweets, conversation_context,data
+                        )
+                    else:
+                        gpt_response,llama_response,finetune_response = await llm_handler.generate_non_crypto_response(
                             reply['parent_tweet_text'], reply['reply_text'], conversation_context
                         )
 
-                        # Generate an appropriate response
-                        if is_crypto:
-                            related_tweets = twitter_api.fetch_related_tweets(keyword)
-                            gpt_response,llama_response,finetune_response = await llm_handler.generate_crypto_response(
-                                reply['parent_tweet_text'], reply['reply_text'], related_tweets, conversation_context,data
-                            )
-                        else:
-                            gpt_response,llama_response,finetune_response = await llm_handler.generate_non_crypto_response(
-                                reply['parent_tweet_text'], reply['reply_text'], conversation_context
-                            )
 
+                    
+                    response_data = {
+                        'reply_id': reply['reply_id'],
+                        'parent_tweet_id': reply['parent_tweet_id'],
+                        'immediate_parent_id': reply['immediate_parent_id'],
+                        'parent_tweet': reply['parent_tweet_text'],
+                        'reply': reply['reply_text'],
+                        'username': reply['username'],
+                        'gpt_response': gpt_response,
+                        'llama_response': llama_response,
+                        'finetune_response': finetune_response,
+                        'is_crypto': is_crypto,
+                        'keywords': list(reply.get('keywords', set())) if is_crypto else [],
+                        'status': 'pending',
+                        'created_at': datetime.utcnow(),
+                        'depth': reply['depth']
+                    }
 
-                        
-                        response_data = {
-                            'reply_id': reply['reply_id'],
-                            'parent_tweet_id': reply['parent_tweet_id'],
-                            'immediate_parent_id': reply['immediate_parent_id'],
-                            'parent_tweet': reply['parent_tweet_text'],
-                            'reply': reply['reply_text'],
-                            'username': reply['username'],
-                            'gpt_response': gpt_response,
-                            'llama_response': llama_response,
-                            'finetune_response': finetune_response,
-                            'is_crypto': is_crypto,
-                            'keywords': list(reply.get('keywords', set())) if is_crypto else [],
-                            'status': 'pending',
-                            'created_at': datetime.utcnow(),
-                            'depth': reply['depth']
-                        }
-
-                        print(f"\nSaving response to DB: {response_data}")  # Print before storing
-                        db.store_response(response_data)
-                        print("✅ Response successfully saved in DB!") 
-                        latest_entry = db.responses.find_one(sort=[("_id", -1)])  
-                        print("\nLatest Entry in DB:", latest_entry)
-                        print("\n===== Processing Response: =====\n")
-                        print(f"Parent Tweet: {reply['parent_tweet_text']}")
-                        print(f"\nUser Reply: {reply['reply_text']}")
-                        print(f"\nGPT Response: {gpt_response}")
-                        print(f"\nLLaMA Response: {llama_response}")
-                        print(f"\nFine-Tuned Response: {finetune_response}")
-                        processed_count += 1
-                    except Exception as e:
-                        print(f"Error processing reply: {e}")
-                        skipped_count += 1
+                    print(f"\nSaving response to DB: {response_data}")  # Print before storing
+                    db.store_response(response_data)
+                    print("✅ Response successfully saved in DB!") 
+                    latest_entry = db.responses.find_one(sort=[("_id", -1)])  
+                    print("\nLatest Entry in DB:", latest_entry)
+                    print("\n===== Processing Response: =====\n")
+                    print(f"Parent Tweet: {reply['parent_tweet_text']}")
+                    print(f"\nUser Reply: {reply['reply_text']}")
+                    print(f"\nGPT Response: {gpt_response}")
+                    print(f"\nLLaMA Response: {llama_response}")
+                    print(f"\nFine-Tuned Response: {finetune_response}")
+                    processed_count += 1
+                    # except Exception as e:
+                    #     print(f"Error processing reply: {e}")
+                    #     skipped_count += 1
 
                 print(f"\nProcessing Summary: {processed_count} processed, {skipped_count} skipped.")
 
@@ -1324,7 +1321,7 @@ async def main():
                         if is_crypto:
                             related_tweets = twitter_api.fetch_related_tweets(keyword)
                             gpt_response,llama_response,finetune_response = await llm_handler.generate_crypto_response(
-                                "", mention['reply_text'], related_tweets,data
+                                "", mention['reply_text'], related_tweets,data,mention.get('parent_tweet_text') 
                             )
                         else:
                             gpt_response,llama_response,finetune_response = await llm_handler.generate_non_crypto_response(
@@ -1462,7 +1459,7 @@ async def main():
                         
                         processed_count += 1
                     except Exception as e:
-                        print(f"Error processing mention: {e}")
+                        print(f"Error processing ind_mentions: {e}")
                         skipped_count += 1
 
             if not replies and not mentions:
