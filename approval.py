@@ -1,4 +1,3 @@
-
 import asyncio
 from pymongo import MongoClient
 import os
@@ -549,10 +548,10 @@ class ApprovalSystem:
                     response.get('finetune_response', '')  
                 )
 
-                # Debugging: Ensure responses are generated
-                print("DEBUG: Regenerated response =", regenerated_response)
-                print("DEBUG: Regenerated ChatGPT response =", regen_chatgpt_response)
-                print("DEBUG: Regenerated Local Model response =", regen_local_response)
+                # # Debugging: Ensure responses are generated
+                # print("DEBUG: Regenerated response =", regenerated_response)
+                # print("DEBUG: Regenerated ChatGPT response =", regen_chatgpt_response)
+                # print("DEBUG: Regenerated Local Model response =", regen_local_response)
 
                 if regenerated_response and regen_chatgpt_response and regen_local_response:
                     update_data = {
@@ -674,6 +673,7 @@ class ApprovalSystem:
                     self.update_response_status(response['_id'], 'retry')
 
 
+
             # elif choice == 'nl':  # Reject Ollama only
             #     print("Regenerating Ollama response...")
                 
@@ -695,10 +695,16 @@ class ApprovalSystem:
             elif choice == 'nc':  # Reject ChatGPT only
                 print("Regenerating ChatGPT response...")
 
+                is_crypto, keyword,data = await self._classify_content(
+                            response.get('parent_tweet', ''), 
+                    response.get('reply', ''), 
+                        )
+
                 regen_chatgpt_response = await self.optimize_response_with_chatgpt(
                     response.get('parent_tweet', ''), 
                     response.get('reply', ''), 
-                    response.get('chatgpt_response', '')  # Provide an empty fallback instead of failing
+                    response.get('chatgpt_response', ''),
+                    data
                 )
 
                 if regen_chatgpt_response:
@@ -784,36 +790,78 @@ class ApprovalSystem:
                 parent_tweet = response.get('parent_tweet', '')
                 reply = response.get('reply', '')
                 local_response = response.get('finetune_response', '')
+                is_crypto, keyword,data = await self._classify_content(
+                            parent_tweet,reply
+                        )
+                
 
-                print(f"DEBUG: Sending to Local Model Regeneration:\nParent Tweet: {parent_tweet}\nReply: {reply}\nLocal Model Response: {local_response}")
+                # print(f"DEBUG: Sending to Local Model Regeneration:\nParent Tweet: {parent_tweet}\nReply: {reply}\nLocal Model Response: {local_response}")
 
                 # Call local model for response regeneration
-                regen_local_response = await self.optimize_response_with_local_model(
-                    parent_tweet,  
-                    reply,  
-                    local_response
-                )
-                if regen_local_response and regen_local_response.strip():
-                    update_result = self.db.responses.update_one(
-                        {'_id': ObjectId(response['_id'])},
-                        {'$set': {'finetune_response': regen_local_response, 'status': 'pending'}}
+                MAX_RETRIES=3
+                retries = 0  # Keep track of retries
+                while retries < MAX_RETRIES:
+                    # Generate a new response
+                    regen_local_response = await self.optimize_response_with_local_model(
+                        parent_tweet,
+                        reply,
+                        local_response,
+                        data
                     )
 
-                    print(f"DEBUG: Update operation - Matched: {update_result.matched_count}, Modified: {update_result.modified_count}")
+                    # Ensure the response is not empty and is different from the previous one
+                    if regen_local_response and regen_local_response.strip() and regen_local_response != local_response:
+                        update_result = self.db.responses.update_one(
+                            {'_id': ObjectId(response['_id'])},
+                            {'$set': {'finetune_response': regen_local_response, 'status': 'pending'}}
+                        )
 
-                    if update_result.modified_count > 0:
-                        print("✅ DEBUG: Successfully regenerated Local Model response:", regen_local_response)
+                        if update_result.modified_count > 0:
+                            print("✅ DEBUG: Successfully regenerated Local Model response:", regen_local_response)
 
-                        # Fetch latest response to ensure update reflects in UI
-                        latest_response = self.db.responses.find_one({'_id': ObjectId(response['_id'])})
-                        if latest_response:
-                            response.clear()  # Remove old data
-                            response.update(latest_response)  # Update with latest data
-                            print(f"✅ DEBUG: Updated finetune_response -> {response['finetune_response']}")
-                        else:
-                            print("⚠️ ERROR: Could not fetch updated response from DB.")
-                    else:
-                        print("⚠️ WARNING: Local Model response was the same or update failed.")
+                            # Fetch latest response to ensure update reflects in UI
+                            latest_response = self.db.responses.find_one({'_id': ObjectId(response['_id'])})
+                            if latest_response:
+                                response.clear()  # Remove old data
+                                response.update(latest_response)  # Update with latest data
+                                print(f"✅ DEBUG: Updated finetune_response -> {response['finetune_response']}")
+                                return  # Exit successfully
+                            else:
+                                print("⚠️ ERROR: Could not fetch updated response from DB.")
+                                return  # Stop retrying if DB fetch fails
+
+                    retries += 1
+                    print(f"⚠️ WARNING: Attempt {retries}/{self.MAX_RETRIES} - Local Model response was the same or update failed. Retrying...")
+
+                print("🚨 ERROR: Response regeneration failed after multiple attempts.")
+
+                # regen_local_response = await self.optimize_response_with_local_model(
+                #     parent_tweet,  
+                #     reply,  
+                #     local_response,
+                #     data
+                # )
+                # if regen_local_response and regen_local_response.strip():
+                #     update_result = self.db.responses.update_one(
+                #         {'_id': ObjectId(response['_id'])},
+                #         {'$set': {'finetune_response': regen_local_response, 'status': 'pending'}}
+                #     )
+
+                #     # print(f"DEBUG: Update operation - Matched: {update_result.matched_count}, Modified: {update_result.modified_count}")
+
+                #     if update_result.modified_count > 0:
+                #         print("✅ DEBUG: Successfully regenerated Local Model response:", regen_local_response)
+
+                #         # Fetch latest response to ensure update reflects in UI
+                #         latest_response = self.db.responses.find_one({'_id': ObjectId(response['_id'])})
+                #         if latest_response:
+                #             response.clear()  # Remove old data
+                #             response.update(latest_response)  # Update with latest data
+                #             print(f"✅ DEBUG: Updated finetune_response -> {response['finetune_response']}")
+                #         else:
+                #             print("⚠️ ERROR: Could not fetch updated response from DB.")
+                #     else:
+                #         print("⚠️ WARNING: Local Model response was the same or update failed.")
 
 
 
@@ -838,7 +886,7 @@ class ApprovalSystem:
 
         return True
 
-    async def optimize_response_with_chatgpt(self, parent_tweet: str, user_reply: str, chatgpt_response: str) -> str:
+    async def optimize_response_with_chatgpt(self, parent_tweet: str, user_reply: str, chatgpt_response: str,data) -> str:
         """Optimize the generated response using ChatGPT."""
         try:
             prompt = f"""
@@ -849,6 +897,7 @@ class ApprovalSystem:
             Parent Tweet: {parent_tweet or " "}
             User Reply: {user_reply}
             Generated Response: {chatgpt_response}
+            Data: '{data}'
 
             ### Instructions:
             - Never repeat, spell, or acknowledge contract addresses or random alphanumeric strings or urls or telegram links directly.
@@ -881,7 +930,7 @@ class ApprovalSystem:
 
     
 
-    async def optimize_response_with_local_model(self, parent_tweet: str, user_reply: str, local_model_response: str) -> str:
+    async def optimize_response_with_local_model(self, parent_tweet: str, user_reply: str, local_model_response: str,data) -> str:
         """Optimize the generated response using the Local Model."""
         try:
             # Check if model and tokenizer are initialized
@@ -893,7 +942,6 @@ class ApprovalSystem:
                 print("ERROR: Tokenizer is not loaded!")
                 return local_model_response
 
-            print("DEBUG: Local model and tokenizer are loaded correctly.")
 
             # Create the prompt
             prompt = f"""
@@ -904,6 +952,7 @@ class ApprovalSystem:
             
             Parent Tweet: {parent_tweet or " "}
             User Reply: {user_reply}
+            Data : '{data}'
             Generated Response: {local_model_response}
 
             ### Instructions:
@@ -953,8 +1002,7 @@ class ApprovalSystem:
                 print("ERROR: Model generated an empty response!")
                 return local_model_response  # Return the old response if model failed
 
-            print(f"DEBUG: Final response after stripping: {repr(response)}")
-
+          
             return response
 
         except Exception as e:
@@ -1302,7 +1350,7 @@ class ApprovalSystem:
                 Requirements:
                     - your name is Primus_sentient , also reffered as primus , do not include this in response
                     - Make sure to provide correct response using 'Data' provided without null and do not repeat any kind of Parent tweet or User reply. 
-                    - ⁠Keep responses under 270 characters including spaces
+                    - Keep responses under 270 characters including spaces
                     - Never repeat, spell, or acknowledge contract addresses or random alphanumeric strings directly.
                     - If asked to spell something weird, respond with humor, sarcasm, or a playful remark.
                     - Be conversational and engaging
@@ -1340,8 +1388,7 @@ class ApprovalSystem:
                     - No quotation marks or hashtags
                     - End sentences completely
             """
-            with open("else.txt", "w", encoding="utf-8") as file:
-                file.write(prompt)
+   
         return prompt
 
     def _call_llm_model_2(self, prompt: str) -> str:
@@ -1364,7 +1411,7 @@ class ApprovalSystem:
                 response.raise_for_status()
                 result = response.json()
                 generated_text = result.get("response", "")
-                print("generated_text ",generated_text)
+                # print("generated_text ",generated_text)
                 if not generated_text:
                     print("Warning: No 'response' key found in Ollama result!")
                     
