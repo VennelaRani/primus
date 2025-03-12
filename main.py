@@ -1,3 +1,4 @@
+
 # this will only bring 10 mins of all what we got , dosent waste much apis
 import tweepy
 from pymongo import MongoClient
